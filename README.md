@@ -1,2 +1,2 @@
 # Gen_Li
-repo for bcb420 for Gen Li
+Link to Gen Li's wiki - 
