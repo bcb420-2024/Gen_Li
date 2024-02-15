@@ -1,0 +1,29 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook for the Homework Assignment-Docker. The following objectives are going to be performed:\
+-create a 5 by 10 matrix of random integers\
+-define column names as cond1, cond2, cond3, cond4, cond5, ctrl1, ctrl2, ctrl3, ctrl4, ctrl5\
+-define row names as gene1, gene2, gene3 ...\
+-Compute the fold change for each gene.
+```{r}
+set.seed(42)
+random_matrix <- matrix(sample.int(1000, size=50), nrow=5, ncol=10)
+colnames(random_matrix) <- c("cond1", "cond2", "cond3", "cond4", "cond5", "ctrl1", "ctrl2", "ctrl3", "ctrl4", "ctrl5")
+rownames(random_matrix) <- c("gene1", "gene2", "gene3", "gene4", "gene5")
+
+condition_expression <- c(mean(random_matrix[, 1:5][1,]), mean(random_matrix[, 1:5][2,]), mean(random_matrix[, 1:5][3,]), mean(random_matrix[, 1:5][4,]), mean(random_matrix[, 1:5][5,]))
+
+control_expression <- c(mean(random_matrix[, 6:10][1,]), mean(random_matrix[, 6:10][2,]), mean(random_matrix[, 6:10][3,]), mean(random_matrix[, 6:10][4,]), mean(random_matrix[, 6:10][5,]))
+
+random_matrix <- cbind(random_matrix, condition_expression, control_expression)
+
+fold_change <- random_matrix[, 11] / random_matrix[, 12]
+
+random_matrix <- cbind(random_matrix, fold_change)
+
+```
+
+The averaged expression of each gene are stored in the column `control_expression` and `condition_expression`, and the fold change value for each gene are stored in the column `fold_change`.
