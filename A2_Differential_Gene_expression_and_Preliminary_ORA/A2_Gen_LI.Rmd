@@ -1,0 +1,704 @@
+---
+title: "Assignment #2 ‐ Differential Gene expression and Preliminary ORA"
+author: "Gen Li"
+date: "2024-03-12"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+bibliography: A2_reference.bib
+---
+
+
+# Introduction
+This notebook records the Differential Gene Expression analysis and Thresholded over-representation analysis of the normalized data generated from Assignment 1. In general, the data with ID [GSE199089](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE199089)[@Cheng2022], was found in the [GEO](https://www.ncbi.nlm.nih.gov/geo/) database, published by a [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022] (please click the link to access). The data is mainly for comparing the differential expression of genes under different treatment of glutamine or glucose or NH4+. In the Assignment 1, the following steps were performed to process the data:
+
+- Compute quality control statistics to assess data quality
+- Map the original Gene symbols (Ensembl ID) to HUGO gene symbols and deal with abnormal situations
+- Clean the data by removing outliers or data with significant errors
+- Apply normalization on the data and generate the data frame as required
+
+The data has HUGO gene symbols as its row names, sample IDs/names as its column names, each cell of the matrix contains the normalized expression value of each gene in each sample. 
+
+In this notebook, the differential Gene expression analysis will be performed first using edgeR package, then for genes that have significant up-regulated/down-regulated genes, the Thresholded over-representation analysis will performed by using gprofiler2 package. First, we need to install all required packages.
+
+Install all necessary packages[@BiocManager]:
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+# Check if all required packages are installed and install them if not
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+if (!require("edgeR", quietly = TRUE))
+    BiocManager::install("edgeR")
+
+if (!require("knitr", quietly = TRUE))
+    install.packages("knitr")
+
+if (!require("ggplot2", quietly = TRUE))
+    install.packages("ggplot2")
+
+if (!require("dplyr", quietly = TRUE))
+    install.packages("dplyr")
+
+if (!require("ggrepel", quietly = TRUE))
+    install.packages("ggrepel")
+
+if (!require("gprofiler2", quietly = TRUE))
+    install.packages("gprofiler2")
+
+if (!require("ComplexHeatmap", quietly = TRUE))
+    BiocManager::install("ComplexHeatmap")
+
+if (!require("circlize", quietly = TRUE))
+    install.packages("circlize")
+
+if (!require("tidyverse", quietly = TRUE))
+    install.packages("tidyverse")
+
+library(edgeR)
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(ggrepel)
+library(gprofiler2)
+library(ComplexHeatmap)
+library(circlize)
+```
+
+# Differential Gene Expression Analysis
+## Load normalized Data
+Directly load the data from my github Repository.
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+
+normalized_expression_matrix_HUGO <- readRDS(gzcon(url("")))
+normalized_expression_matrix_HUGO <- cbind(normalized_expression_matrix_HUGO, symbol = rownames(normalized_expression_matrix_HUGO))
+```
+Here we have a quick look at the normalized data:
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+normalized_expression_matrix_HUGO[1:5, ]
+```
+
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+print(dim(normalized_expression_matrix_HUGO))
+```
+
+## MDS Plot
+We can use MDS plot to check if the samples with the same conditions cluster with each other closely. The result turns out to be pretty impressive. Samples with the same conditions cluster with each other very closely (this is exactly what we want). The legend means that if the sample is treated by nothing/glutamine/glucose/glutamine+glucose/glucose+NH4+.
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+group <- c("Gln", "Gln", "Gln", "Glu", "Glu", "Glu", "Glu_Gln", "Glu_Gln", 
+           "Glu_Gln", "Glu_NH4", "Glu_NH4", "Glu_NH4", "ctrl", "ctrl", "ctrl")
+
+y <- DGEList(counts=normalized_expression_matrix_HUGO[,1:15],group=group)
+
+plotMDS(y, labels=NULL, pch = 1, top = 100,
+        col = c("darkgreen", "red", "purple", "cyan", "darkblue")[
+          factor(group)])  
+
+title(main = "MDS Plot by conditions")
+legend("topright", 
+       legend = levels(factor(group)),
+       col = c("darkgreen", "red", "purple", "cyan", "darkblue"), 
+       pch = 1, 
+       cex = 0.7,
+       title = "Replicate condition")
+```
+## Design the model & Perform the DE analysis
+According to the [UserGuide](https://bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf) page 31 from [edgeR](https://bioconductor.org/packages/release/bioc/html/edgeR.html)[@edgeR]. I am going to design the model for the differential gene expression. Since I have multiple replicates, I am going to use the GLM approach instead of the classic approach. In the codes below, the 0+ in the model formula is an instruction not to include an intercept column and instead to include a column for each group. 
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+design <- model.matrix(~0+group)
+y <- estimateDisp(y,design)
+colnames(design) <- levels(y$samples$group)
+
+```
+After defining the design matrix. The differential expression analysis will be performed. Here I decided to use the Quasi likelihood model, since it is used for more complicated models and is highly recommended for bulk RNASeq experiments (perfectly match the data I have).
+
+Apart from that, I can compare any of the treatment groups using the contrast argument of the glmQLFTest function (see codes below). Here I tried to compare the control groups with each of the treatment condition group. 
+
+Gln vs ctrl 
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+fit <- glmQLFit(y, design)
+
+my.contrasts <- makeContrasts(Glnvsctrl=Gln-ctrl, Gluvsctrl=Glu-ctrl, Glu_Glnvsctrl=Glu_Gln-ctrl, Glu_NH4vsctrl=Glu_NH4-ctrl, levels=design)
+
+qlf.Glnvsctrl <- glmQLFTest(fit, contrast=my.contrasts[,"Glnvsctrl"])
+Glnvsctrl_result <- topTags(qlf.Glnvsctrl, adjust.method = "BH", n = length(rownames(qlf.Glnvsctrl$table)))
+print(Glnvsctrl_result)
+```
+
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+length(which(Glnvsctrl_result$table$FDR < 0.05))
+length(which(Glnvsctrl_result$table$PValue < 0.05))
+```
+
+Glu vs ctrl
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+qlf.Gluvsctrl <- glmQLFTest(fit, contrast=my.contrasts[,"Gluvsctrl"])
+Gluvsctrl_result <- topTags(qlf.Gluvsctrl, adjust.method = "BH", n = length(rownames(qlf.Gluvsctrl$table)))
+print(Gluvsctrl_result)
+```
+
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+length(which(Gluvsctrl_result$table$FDR < 0.05))
+length(which(Gluvsctrl_result$table$PValue < 0.05))
+```
+
+Glu_Gln vs ctrl
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+qlf.Glu_Glnvsctrl <- glmQLFTest(fit, contrast=my.contrasts[,"Glu_Glnvsctrl"])
+
+Glu_Glnvsctrl_result <- topTags(qlf.Glu_Glnvsctrl, adjust.method = "BH", n = length(rownames(qlf.Glu_Glnvsctrl$table)))
+print(Glu_Glnvsctrl_result)
+```
+
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+length(which(Glu_Glnvsctrl_result$table$FDR < 0.05))
+length(which(Glu_Glnvsctrl_result$table$PValue < 0.05))
+```
+
+Glu_NH4 vs ctrl
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+qlf.Glu_NH4vsctrl <- glmQLFTest(fit, contrast=my.contrasts[,"Glu_NH4vsctrl"])
+
+Glu_NH4vsctrl_result <- topTags(qlf.Glu_NH4vsctrl, adjust.method = "BH", n = length(rownames(qlf.Glu_NH4vsctrl$table)))
+print(Glu_NH4vsctrl_result)
+```
+
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+length(which(Glu_NH4vsctrl_result$table$FDR < 0.05))
+length(which(Glu_NH4vsctrl_result$table$PValue < 0.05))
+```
+
+For all the differential expression analysis happened above, I decided to use the BH (Benjamni Hochberg) method for the correction of multiple hypothesis testing. 
+
+
+## Visualization with Heatmap
+After performing the differential gene expression analysis, visualizations of top hits genes using heatmaps and volcano plots are generated.
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+normalized_expression_matrix_HUGO <- readRDS(gzcon(url("")))
+
+heatmap_matrix <- normalized_expression_matrix_HUGO[, 1:ncol(normalized_expression_matrix_HUGO)]
+
+```
+
+
+**For Gln vs ctrl group**
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+
+top_hits <- rownames(Glnvsctrl_result$table)[Glnvsctrl_result$table$FDR<0.05]
+heatmap_matrix_tophits <- t(
+  scale(t(heatmap_matrix[which(rownames(heatmap_matrix) %in% top_hits),])))
+
+if(min(heatmap_matrix_tophits) == 0){
+  heatmap_col = colorRamp2(c( 0, max(heatmap_matrix_tophits)),
+                           c( "white", "red"))
+} else {
+  heatmap_col = colorRamp2(c(min(heatmap_matrix_tophits), 0,
+                             max(heatmap_matrix_tophits)), c("blue", "white", "red"))
+}
+
+
+# Add annotations to heatmap
+group_condition <- unique(group)
+unique_conditioncolors <- rainbow(n = length(group_condition))
+names(unique_conditioncolors) <- group_condition
+
+annotation <- HeatmapAnnotation(df = data.frame(
+  conditions = group),
+  col = list(conditions = unique_conditioncolors),
+  show_legend = TRUE)
+
+Heatmap(as.matrix(heatmap_matrix_tophits),
+       top_annotation = annotation, 
+       name = "Value",
+       cluster_rows = TRUE,
+       cluster_columns = TRUE,
+       show_row_dend = TRUE,
+       show_column_dend = TRUE,
+       col=heatmap_col,
+       show_column_names = FALSE,
+       show_row_names = FALSE,
+       show_heatmap_legend = TRUE,
+       column_title =("Top hits Gln vs Control")
+)
+```
+
+**For Glu vs ctrl group**
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+
+top_hits <- rownames(Gluvsctrl_result$table)[Gluvsctrl_result$table$FDR<0.05]
+heatmap_matrix_tophits <- t(
+  scale(t(heatmap_matrix[which(rownames(heatmap_matrix) %in% top_hits),])))
+
+if(min(heatmap_matrix_tophits) == 0){
+  heatmap_col = colorRamp2(c( 0, max(heatmap_matrix_tophits)),
+                           c( "white", "red"))
+} else {
+  heatmap_col = colorRamp2(c(min(heatmap_matrix_tophits), 0,
+                             max(heatmap_matrix_tophits)), c("blue", "white", "red"))
+}
+
+
+# Add annotations to heatmap
+group_condition <- unique(group)
+unique_conditioncolors <- rainbow(n = length(group_condition))
+names(unique_conditioncolors) <- group_condition
+
+annotation <- HeatmapAnnotation(df = data.frame(
+  conditions = group),
+  col = list(conditions = unique_conditioncolors),
+  show_legend = TRUE)
+
+Heatmap(as.matrix(heatmap_matrix_tophits),
+       top_annotation = annotation, 
+       name = "Value",
+       cluster_rows = TRUE,
+       cluster_columns = TRUE,
+       show_row_dend = TRUE,
+       show_column_dend = TRUE,
+       col=heatmap_col,
+       show_column_names = FALSE,
+       show_row_names = FALSE,
+       show_heatmap_legend = TRUE,
+       column_title =("Top hits Glu vs Control")
+)
+```
+
+**For Glu_Gln vs ctrl group**
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+
+top_hits <- rownames(Glu_Glnvsctrl_result$table)[Glu_Glnvsctrl_result$table$FDR<0.05]
+heatmap_matrix_tophits <- t(
+  scale(t(heatmap_matrix[which(rownames(heatmap_matrix) %in% top_hits),])))
+
+if(min(heatmap_matrix_tophits) == 0){
+  heatmap_col = colorRamp2(c( 0, max(heatmap_matrix_tophits)),
+                           c( "white", "red"))
+} else {
+  heatmap_col = colorRamp2(c(min(heatmap_matrix_tophits), 0,
+                             max(heatmap_matrix_tophits)), c("blue", "white", "red"))
+}
+
+
+# Add annotations to heatmap
+group_condition <- unique(group)
+unique_conditioncolors <- rainbow(n = length(group_condition))
+names(unique_conditioncolors) <- group_condition
+
+annotation <- HeatmapAnnotation(df = data.frame(
+  conditions = group),
+  col = list(conditions = unique_conditioncolors),
+  show_legend = TRUE)
+
+Heatmap(as.matrix(heatmap_matrix_tophits),
+       top_annotation = annotation, 
+       name = "Value",
+       cluster_rows = TRUE,
+       cluster_columns = TRUE,
+       show_row_dend = TRUE,
+       show_column_dend = TRUE,
+       col=heatmap_col,
+       show_column_names = FALSE,
+       show_row_names = FALSE,
+       show_heatmap_legend = TRUE,
+       column_title =("Top hits Glu_Gln vs Control")
+)
+```
+
+**For Glu_NH4 vs ctrl group**
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+
+top_hits <- rownames(Glu_NH4vsctrl_result$table)[Glu_NH4vsctrl_result$table$FDR<0.05]
+heatmap_matrix_tophits <- t(
+  scale(t(heatmap_matrix[which(rownames(heatmap_matrix) %in% top_hits),])))
+
+if(min(heatmap_matrix_tophits) == 0){
+  heatmap_col = colorRamp2(c( 0, max(heatmap_matrix_tophits)),
+                           c( "white", "red"))
+} else {
+  heatmap_col = colorRamp2(c(min(heatmap_matrix_tophits), 0,
+                             max(heatmap_matrix_tophits)), c("blue", "white", "red"))
+}
+
+
+# Add annotations to heatmap
+group_condition <- unique(group)
+unique_conditioncolors <- rainbow(n = length(group_condition))
+names(unique_conditioncolors) <- group_condition
+
+annotation <- HeatmapAnnotation(df = data.frame(
+  conditions = group),
+  col = list(conditions = unique_conditioncolors),
+  show_legend = TRUE)
+
+Heatmap(as.matrix(heatmap_matrix_tophits),
+       top_annotation = annotation, 
+       name = "Value",
+       cluster_rows = TRUE,
+       cluster_columns = TRUE,
+       show_row_dend = TRUE,
+       show_column_dend = TRUE,
+       col=heatmap_col,
+       show_column_names = FALSE,
+       show_row_names = FALSE,
+       show_heatmap_legend = TRUE,
+       column_title =("Top hits Glu_NH4 vs Control")
+)
+```
+
+It is easy to see that the groups treated with the same conditions significantly tend to cluster together. This is a very good result, and such behavior is expected. In the [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022], they treat the samples with different conditions to explore their effect on the expression of genes regulating fatty acid and cholesterol synthesis, the clustering of the groups with same conditions confirm that the experiment design is relatively reliable and reproducible.
+
+
+## Visualization with Volcano Plots
+I also plot the differential expression result by Volcano plot to identify some genes of interest:
+
+For Gln vs ctrl group
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+result <- Glnvsctrl_result$table %>%
+  mutate(gene_type = case_when(logFC >= 1 & FDR <= 0.05 ~ "Up",
+                               logFC <= -1 & FDR <= 0.05 ~ "Down",
+                               TRUE ~ "No Significant Change"))
+result <- cbind(result, symbol=rownames(result))
+
+
+cols <- c("Up" = "#ffad73", "Down" = "#26b3ff", "No Significant Change" = "grey") 
+
+genes_interest <- result %>%
+  filter(symbol %in% c("SREBF1", "SREBF2", "ACLY", "ACACA", "FASN", "SCD1", "HMGCR", "LDLR"))
+
+
+ggplot(data = result,
+       aes(x = logFC,
+           y = -log10(FDR))) + 
+  geom_point(aes(colour = gene_type), 
+             alpha = 0.6, 
+             shape = 16,
+             size = 1) + 
+  geom_point(data = genes_interest,
+             shape = 21,
+             size = 2, 
+             fill = "firebrick", 
+             colour = "black") + 
+  geom_hline(yintercept = -log10(0.05),
+             linetype = "dashed") + 
+  geom_vline(xintercept = c(log2(0.5), log2(2)),
+             linetype = "dashed") +
+  geom_label_repel(data = genes_interest, # Add labels last to appear as the top layer  
+                   aes(label = symbol),
+                   force = 2,
+                   nudge_y = 1) +
+  scale_colour_manual(values = cols) + 
+  scale_x_continuous(breaks = c(seq(-5, 5, 1))) +
+  scale_y_continuous(breaks = c(seq(0, 85, 10))) +
+  labs(title = "Gene expression changes in Gln vs ctrl",
+       x = "log2(fold change)",
+       y = "-log10(FDR)",
+       colour = "Expression \nChange") +
+  theme_bw() + # Select theme with a white background  
+  theme(panel.border = element_rect(colour = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank())
+```
+
+
+For Glu vs ctrl group
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+result <- Gluvsctrl_result$table %>%
+  mutate(gene_type = case_when(logFC >= 1 & FDR <= 0.05 ~ "Up",
+                               logFC <= -1 & FDR <= 0.05 ~ "Down",
+                               TRUE ~ "No Significant Change"))
+result <- cbind(result, symbol=rownames(result))
+
+
+cols <- c("Up" = "#ffad73", "Down" = "#26b3ff", "No Significant Change" = "grey") 
+
+genes_interest <- result %>%
+  filter(symbol %in% c("SREBF1", "SREBF2", "ACLY", "ACACA", "FASN", "SCD1", "HMGCR", "LDLR"))
+
+
+ggplot(data = result,
+       aes(x = logFC,
+           y = -log10(FDR))) + 
+  geom_point(aes(colour = gene_type), 
+             alpha = 0.6, 
+             shape = 16,
+             size = 1) + 
+  geom_point(data = genes_interest,
+             shape = 21,
+             size = 2, 
+             fill = "firebrick", 
+             colour = "black") + 
+  geom_hline(yintercept = -log10(0.05),
+             linetype = "dashed") + 
+  geom_vline(xintercept = c(log2(0.5), log2(2)),
+             linetype = "dashed") +
+  geom_label_repel(data = genes_interest, # Add labels last to appear as the top layer  
+                   aes(label = symbol),
+                   force = 2,
+                   nudge_y = 1) +
+  scale_colour_manual(values = cols) + 
+  scale_x_continuous(breaks = c(seq(-5, 5, 1))) +
+  scale_y_continuous(breaks = c(seq(0, 85, 10))) +
+  labs(title = "Gene expression changes in Glu vs ctrl",
+       x = "log2(fold change)",
+       y = "-log10(FDR)",
+       colour = "Expression \nChange") +
+  theme_bw() + # Select theme with a white background  
+  theme(panel.border = element_rect(colour = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank())
+```
+
+For Glu_Gln vs ctrl group
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+result <- Glu_Glnvsctrl_result$table %>%
+  mutate(gene_type = case_when(logFC >= 1 & FDR <= 0.05 ~ "Up",
+                               logFC <= -1 & FDR <= 0.05 ~ "Down",
+                               TRUE ~ "No Significant Change"))
+result <- cbind(result, symbol=rownames(result))
+
+
+cols <- c("Up" = "#ffad73", "Down" = "#26b3ff", "No Significant Change" = "grey") 
+
+genes_interest <- result %>%
+  filter(symbol %in% c("SREBF1", "SREBF2", "ACLY", "ACACA", "FASN", "SCD1", "HMGCR", "LDLR"))
+
+
+ggplot(data = result,
+       aes(x = logFC,
+           y = -log10(FDR))) + 
+  geom_point(aes(colour = gene_type), 
+             alpha = 0.6, 
+             shape = 16,
+             size = 1) + 
+  geom_point(data = genes_interest,
+             shape = 21,
+             size = 2, 
+             fill = "firebrick", 
+             colour = "black") + 
+  geom_hline(yintercept = -log10(0.05),
+             linetype = "dashed") + 
+  geom_vline(xintercept = c(log2(0.5), log2(2)),
+             linetype = "dashed") +
+  geom_label_repel(data = genes_interest, # Add labels last to appear as the top layer  
+                   aes(label = symbol),
+                   force = 2,
+                   nudge_y = 1) +
+  scale_colour_manual(values = cols) + 
+  scale_x_continuous(breaks = c(seq(-5, 5, 1))) +
+  scale_y_continuous(breaks = c(seq(0, 85, 10))) +
+  labs(title = "Gene expression changes in Glu_Gln vs ctrl",
+       x = "log2(fold change)",
+       y = "-log10(FDR)",
+       colour = "Expression \nChange") +
+  theme_bw() + # Select theme with a white background  
+  theme(panel.border = element_rect(colour = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank())
+```
+
+For Glu_NH4 vs ctrl group
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+result <- Glu_NH4vsctrl_result$table %>%
+  mutate(gene_type = case_when(logFC >= 1 & FDR <= 0.05 ~ "Up",
+                               logFC <= -1 & FDR <= 0.05 ~ "Down",
+                               TRUE ~ "No Significant Change"))
+result <- cbind(result, symbol=rownames(result))
+
+
+cols <- c("Up" = "#ffad73", "Down" = "#26b3ff", "No Significant Change" = "grey") 
+
+genes_interest <- result %>%
+  filter(symbol %in% c("SREBF1", "SREBF2", "ACLY", "ACACA", "FASN", "SCD1", "HMGCR", "LDLR"))
+
+
+ggplot(data = result,
+       aes(x = logFC,
+           y = -log10(FDR))) + 
+  geom_point(aes(colour = gene_type), 
+             alpha = 0.6, 
+             shape = 16,
+             size = 1) + 
+  geom_point(data = genes_interest,
+             shape = 21,
+             size = 2, 
+             fill = "firebrick", 
+             colour = "black") + 
+  geom_hline(yintercept = -log10(0.05),
+             linetype = "dashed") + 
+  geom_vline(xintercept = c(log2(0.5), log2(2)),
+             linetype = "dashed") +
+  geom_label_repel(data = genes_interest, # Add labels last to appear as the top layer  
+                   aes(label = symbol),
+                   force = 2,
+                   nudge_y = 1) +
+  scale_colour_manual(values = cols) + 
+  scale_x_continuous(breaks = c(seq(-5, 5, 1))) +
+  scale_y_continuous(breaks = c(seq(0, 85, 10))) +
+  labs(title = "Gene expression changes in Glu_NH4 vs ctrl",
+       x = "log2(fold change)",
+       y = "-log10(FDR)",
+       colour = "Expression \nChange") +
+  theme_bw() + # Select theme with a white background  
+  theme(panel.border = element_rect(colour = "black", fill = NA, size= 0.5),    
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank())
+```
+According tot he Volcano Plots above, when treating the sample with only glutamine or glucose, the expression of genes of interest (genes that regulating fatty acid and cholesterol synthesis) has no significant up-regulation. Then treating the sample with both glutamine and glucose or both glucose and NH4+ would generally up-regulate the expression of the genes that regulate fatty acid and cholesterol synthesis. And it can also be seen that glutamine and glucose has relatively better effect on up-regulation of genes of interest than glucose and NH4+.
+
+## Questions to answer for the Differential expression section
+**How many genes were significantly differentially expressed? What thresholds did you use and why?**
+Based on the p-value generated by the DE analysis:
+For Gln vs ctrl group: 6637 genes significantly differentially expressed.
+For Glu vs ctrl group: 7533 genes significantly differentially expressed.
+For Glu_Gln vs ctrl group: 6743 genes significantly differentially expressed.
+For Glu_NH4 vs ctrl group: 7495 genes significantly differentially expressed.
+
+I used the 0.05 threshold for p-value, genes that have p values lower than 0.05 would be considered as significantly differentially expressed. The reason for choosing 0.05 is that it is a widely accepted statistical significance threshold and is widely used. 
+
+**Which method did you use for multiple hypothesis testing correction? And Why? How many genes passed correction?**
+I choosed BH (Benjamni Hochberg) method for the correction of multiple hypothesis testing because it offers a good balance between controlling false discoveries and maintaining statistical power, making it suitable for a wide range of applications. And also this is the recommended method from the lecture. 
+
+For Gln vs ctrl group: 5786 genes passed the correction.
+For Glu vs ctrl group: 6935 genes passed the correction.
+For Glu_Gln vs ctrl group: 5853 genes passed the correction.
+For Glu_NH4 vs ctrl group: 6792 genes passed the correction.
+
+**Visualize your top hits using a heatmap. Do you conditions cluster together? Explain why or why not.**
+It is easy to see that the groups treated with the same conditions significantly tend to cluster together. This is a very good result, and such behavior is expected. Since same treatment should lead to the similar result.
+
+In the [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022], they treat the samples with different conditions to explore their effect on the expression of genes regulating fatty acid and cholesterol synthesis, the clustering of the groups with same conditions confirm that the experiment design is relatively reliable and reproducible.
+
+# Thresholded over-representation analysis
+I also performed the thresholded over-representation analysis (ORA) using the g:profiler tool. Sicne we already observed that the condition with both glutamine and glucose would up-regulate the expression of genes that regulating fatty acid and cholesterol synthesis most significantly, I will perform the ORA on the the groups treated by both glutamine and glucose, which is one of the main focuses of the [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022] as well.
+
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+result_to_use <- Glu_Glnvsctrl_result$table
+
+result_to_use <- cbind(result_to_use, symbol=rownames(result_to_use))
+
+result_to_use[,"rank"] <- -log(result_to_use$FDR,base = 10) * sign(result_to_use$logFC)
+result_ora <-
+  result_to_use[order(result_to_use$rank),]
+
+result_ora <-
+  result_ora[result_ora$symbol != "",]
+
+upregulated_genes <- result_ora$symbol[
+  which(result_ora$FDR < 0.05
+        & result_ora$logFC > 0)]
+
+downregulated_genes <- result_ora$symbol[
+  which(result_ora$FDR < 0.05
+        & result_ora$logFC < 0)]
+
+gprofiler_results_up <- gost(query = upregulated_genes ,
+                          significant=FALSE,
+                          ordered_query = TRUE,
+                          exclude_iea = TRUE,
+                          correction_method = "fdr",
+                          organism = "hsapiens",
+                          source = c("REAC","WP","GO:BP"))
+#get the gprofiler results table
+enrichment_results_up <- gprofiler_results_up$result
+print("Number of genesets returned for up-regulated genes:")
+print(nrow(enrichment_results_up))
+
+gprofiler_results_down <- gost(query = downregulated_genes ,
+                          significant=FALSE,
+                          ordered_query = TRUE,
+                          exclude_iea = TRUE,
+                          correction_method = "fdr",
+                          organism = "hsapiens",
+                          source = c("REAC","WP","GO:BP"))
+#get the gprofiler results table
+enrichment_results_down <- gprofiler_results_down$result
+print("Number of genesets returned for down-regulated genes:")
+print(nrow(enrichment_results_down))
+
+gprofiler_results_all <- gost(query = result_ora$symbol ,
+                          significant=FALSE,
+                          ordered_query = TRUE,
+                          exclude_iea = TRUE,
+                          correction_method = "fdr",
+                          organism = "hsapiens",
+                          source = c("REAC","WP","GO:BP"))
+#get the gprofiler results table
+enrichment_results_all <- gprofiler_results_all$result
+print("Number of genesets returned for all genes:")
+print(nrow(enrichment_results_all))
+```
+
+I also decided to exclude sets with more than 3000 terms and sets with less than 3 terms. Apart from that, I also requires the intersection size between my query and the data source should be more than 50
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+up_enrichment_results_mxgssize_3k_min_3 <- 
+  subset(enrichment_results_up,term_size >= 3 & 
+           term_size <= 3000 & 
+           intersection_size >= 50 , 
+           select = c(term_id,term_name,p_value,intersection_size, term_size))
+
+down_enrichment_results_mxgssize_3k_min_3 <- 
+  subset(enrichment_results_down,term_size >= 3 & 
+           term_size <= 3000 & 
+           intersection_size >= 50 , 
+           select = c(term_id,term_name,p_value,intersection_size, term_size))
+
+all_enrichment_results_mxgssize_3k_min_3 <- 
+  subset(enrichment_results_all,term_size >= 3 & 
+           term_size <= 3000 & 
+           intersection_size >= 50 , 
+           select = c(term_id,term_name,p_value,intersection_size, term_size))
+```
+
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+
+up_enrichment_results_mxgssize_3k_min_3[1:15,c("term_name", "p_value", "intersection_size")] %>% 
+  kable(caption="Top filtered pathways hits for upregulated genes.", 
+      row.names = FALSE, digits = 32)
+```
+
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+down_enrichment_results_mxgssize_3k_min_3[1:15,c("term_name", "p_value", "intersection_size")] %>% 
+  kable(caption="Top filtered pathways hits for upregulated genes.", 
+      row.names = FALSE, digits = 164)
+```
+      
+```{r, error=FALSE, message=FALSE, warning=FALSE}      
+all_enrichment_results_mxgssize_3k_min_3[1:15,c("term_name", "p_value", "intersection_size")] %>% 
+  kable(caption="Top filtered pathways hits for upregulated genes.", 
+      row.names = FALSE, digits = 164)
+```
+
+
+**Which method did you choose and why?**
+I decided to perform the thresholded over-representation analysis using g:profiler, since I used it in one of my research project before and I am quite familiar with it. Apart from that, g:profiler is a well-established and well-maintained tool to use. As mentioned in the lecture, it has updated data source. It is also very easy to use. 
+
+**What annotation data did you use and why? What version of the annotation are you using?**
+In this analysis, I utilize GO biological process (GO:BP), Reactome (REAC), and WikiPathways (WP) as annotation databases. This choice is consistent with our objective of identifying enriched biological pathways linked to the identified genes. GO electronic annotations (IEA) were omitted to maintain the use of only high-quality annotations in our analysis.
+
+**How many genesets were returned with what thresholds?**
+For all the ORA, I decided to use the threshold 0.05 to determine if a gene's differential expression is significant, and use the threshold 0 for logFC to determine if a gene is up-regulated or down-regulated. When logFC is larger than 0, meaning that the gene has higher larger expression level. When logFC is smaller than 0, meaning that the gene has lower expression level.
+
+For the group that compares samples treated by both glutamine and glucose with Control, 12633 gene sets are returned from the ORA on up-regulated genes. 7306 gene sets are returned from the ORA on down-regulated genes. 15824 gene sets are returned from the ORA on all genes.
+
+**Run the analysis using the up-regulated set of genes, and the down-regulated set of genes separately. How do these results compare to using the whole list (i.e all differentially expressed genes together vs. the up-regulated and down regulated differentially expressed genes separately)?**
+
+The filtered result for ORA between the down-regulated genes and all genes has higher similarity than the result between up-regulated genes and all genes. This may indicate that the treatment of both glutamine and glucose activates some new pathways. Apart from that, the pathways for the up-regulated genes are mainly related to the cell cycle and components transport (localization), which may indicate that those up-regulated genes may be highly related to some synthesis or secretion process. The results for down-regulated genes and all genes mainly return the pathway that are related to biosynthesis, metabolism and RNA processing, which is not so informative since all biological functions are related to these processes. Also, both ORA results for up/down-regulated genes have lower number of gene sets returned than all genes.
+
+# Interpretation
+**Do the over-representation results support conclusions or mechanism discussed in the original paper?**
+The results I have support the conclusions from the original [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022] well. The original paper has the conclusion that "ammonia, released from glutamine, promotes lipogenesis via activation of sterol regulatory element-binding proteins (SREBPs), endoplasmic reticulum (ER)-bound transcription factors that play a central role in lipid metabolism."[@Cheng2022]. The result that I have for up-regulated genes shows that the consumption of glutamine and glucose helps activate some synthesis process (because ORA result shows that those up-regulated genes are mainly about transport (localization) and cell cycles). 
+
+**Can you find evidence, i.e. publications, to support some of the results that you see. How does this evidence support your results.**
+I also found a [paper](https://febs.onlinelibrary.wiley.com/doi/full/10.1111/j.1742-4658.2011.08204.x)[@] that supports the result that I see from the differential expression analysis and ORA. This paper indicates that genes related to lipid homeostasis is highly related to the amount of glutamine consumed by the cells. In my analysis, I obtained that genes that are known to be important in the process of fatty acid and cholesterol synthesis are up-regulated (higher expression) when treated by the glutamine and glucose, which matches with the point published by the [paper](https://febs.onlinelibrary.wiley.com/doi/full/10.1111/j.1742-4658.2011.08204.x)[@] I mentioned.
+
+# References
+
+
+
+
+
+
+
+
+
+
