@@ -22,7 +22,7 @@ The data has HUGO gene symbols as its row names, sample IDs/names as its column 
 
 In this notebook, the differential Gene expression analysis will be performed first using edgeR package, then for genes that have significant up-regulated/down-regulated genes, the Thresholded over-representation analysis will performed by using gprofiler2 package. First, we need to install all required packages.
 
-Install all necessary packages[@BiocManager]:
+Install all necessary packages[@BiocManager] [@knitr] [@edgeR] [@ggplot2] [@dplyr] [@ggrepel] [@gprofiler2] [@complexheatmap] [@circlize]:
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 # Check if all required packages are installed and install them if not
 if (!require("BiocManager", quietly = TRUE))
@@ -70,7 +70,7 @@ library(circlize)
 Directly load the data from my github Repository.
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 
-normalized_expression_matrix_HUGO <- readRDS(gzcon(url("https://github.com/bcb420-2024/Gen_Li/blob/main/A2_Differential_Gene_expression_and_Preliminary_ORA/normalized_expression_matrix_HUGO.rds")))
+normalized_expression_matrix_HUGO <- readRDS("normalized_expression_matrix_HUGO.rds")
 normalized_expression_matrix_HUGO <- cbind(normalized_expression_matrix_HUGO, symbol = rownames(normalized_expression_matrix_HUGO))
 ```
 Here we have a quick look at the normalized data:
@@ -102,6 +102,7 @@ legend("topright",
        cex = 0.7,
        title = "Replicate condition")
 ```
+
 ## Design the model & Perform the DE analysis
 According to the [UserGuide](https://bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf) page 31 from [edgeR](https://bioconductor.org/packages/release/bioc/html/edgeR.html)[@edgeR]. I am going to design the model for the differential gene expression. Since I have multiple replicates, I am going to use the GLM approach instead of the classic approach. In the codes below, the 0+ in the model formula is an instruction not to include an intercept column and instead to include a column for each group. 
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
@@ -114,7 +115,7 @@ After defining the design matrix. The differential expression analysis will be p
 
 Apart from that, I can compare any of the treatment groups using the contrast argument of the glmQLFTest function (see codes below). Here I tried to compare the control groups with each of the treatment condition group. 
 
-Gln vs ctrl 
+**Gln vs ctrl** 
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 fit <- glmQLFit(y, design)
 
@@ -122,7 +123,7 @@ my.contrasts <- makeContrasts(Glnvsctrl=Gln-ctrl, Gluvsctrl=Glu-ctrl, Glu_Glnvsc
 
 qlf.Glnvsctrl <- glmQLFTest(fit, contrast=my.contrasts[,"Glnvsctrl"])
 Glnvsctrl_result <- topTags(qlf.Glnvsctrl, adjust.method = "BH", n = length(rownames(qlf.Glnvsctrl$table)))
-print(Glnvsctrl_result)
+print(Glnvsctrl_result[1:10, ])
 ```
 
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
@@ -130,11 +131,11 @@ length(which(Glnvsctrl_result$table$FDR < 0.05))
 length(which(Glnvsctrl_result$table$PValue < 0.05))
 ```
 
-Glu vs ctrl
+**Glu vs ctrl**
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 qlf.Gluvsctrl <- glmQLFTest(fit, contrast=my.contrasts[,"Gluvsctrl"])
 Gluvsctrl_result <- topTags(qlf.Gluvsctrl, adjust.method = "BH", n = length(rownames(qlf.Gluvsctrl$table)))
-print(Gluvsctrl_result)
+print(Gluvsctrl_result[1:10, ])
 ```
 
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
@@ -142,12 +143,12 @@ length(which(Gluvsctrl_result$table$FDR < 0.05))
 length(which(Gluvsctrl_result$table$PValue < 0.05))
 ```
 
-Glu_Gln vs ctrl
+**Glu_Gln vs ctrl**
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 qlf.Glu_Glnvsctrl <- glmQLFTest(fit, contrast=my.contrasts[,"Glu_Glnvsctrl"])
 
 Glu_Glnvsctrl_result <- topTags(qlf.Glu_Glnvsctrl, adjust.method = "BH", n = length(rownames(qlf.Glu_Glnvsctrl$table)))
-print(Glu_Glnvsctrl_result)
+print(Glu_Glnvsctrl_result[1:10, ])
 ```
 
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
@@ -155,12 +156,12 @@ length(which(Glu_Glnvsctrl_result$table$FDR < 0.05))
 length(which(Glu_Glnvsctrl_result$table$PValue < 0.05))
 ```
 
-Glu_NH4 vs ctrl
+**Glu_NH4 vs ctrl**
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 qlf.Glu_NH4vsctrl <- glmQLFTest(fit, contrast=my.contrasts[,"Glu_NH4vsctrl"])
 
 Glu_NH4vsctrl_result <- topTags(qlf.Glu_NH4vsctrl, adjust.method = "BH", n = length(rownames(qlf.Glu_NH4vsctrl$table)))
-print(Glu_NH4vsctrl_result)
+print(Glu_NH4vsctrl_result[1:10, ])
 ```
 
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
@@ -174,7 +175,7 @@ For all the differential expression analysis happened above, I decided to use th
 ## Visualization with Heatmap
 After performing the differential gene expression analysis, visualizations of top hits genes using heatmaps and volcano plots are generated.
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
-normalized_expression_matrix_HUGO <- readRDS(gzcon(url("https://github.com/bcb420-2024/Gen_Li/blob/main/A2_Differential_Gene_expression_and_Preliminary_ORA/normalized_expression_matrix_HUGO.rds")))
+normalized_expression_matrix_HUGO <- readRDS("normalized_expression_matrix_HUGO.rds")
 
 heatmap_matrix <- normalized_expression_matrix_HUGO[, 1:ncol(normalized_expression_matrix_HUGO)]
 
@@ -351,7 +352,7 @@ It is easy to see that the groups treated with the same conditions significantly
 ## Visualization with Volcano Plots
 I also plot the differential expression result by Volcano plot to identify some genes of interest:
 
-For Gln vs ctrl group
+**For Gln vs ctrl group**
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 result <- Glnvsctrl_result$table %>%
   mutate(gene_type = case_when(logFC >= 1 & FDR <= 0.05 ~ "Up",
@@ -400,7 +401,7 @@ ggplot(data = result,
 ```
 
 
-For Glu vs ctrl group
+**For Glu vs ctrl group**
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 result <- Gluvsctrl_result$table %>%
   mutate(gene_type = case_when(logFC >= 1 & FDR <= 0.05 ~ "Up",
@@ -448,7 +449,7 @@ ggplot(data = result,
         panel.grid.major = element_blank())
 ```
 
-For Glu_Gln vs ctrl group
+**For Glu_Gln vs ctrl group**
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 result <- Glu_Glnvsctrl_result$table %>%
   mutate(gene_type = case_when(logFC >= 1 & FDR <= 0.05 ~ "Up",
@@ -496,7 +497,7 @@ ggplot(data = result,
         panel.grid.major = element_blank())
 ```
 
-For Glu_NH4 vs ctrl group
+**For Glu_NH4 vs ctrl group**
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 result <- Glu_NH4vsctrl_result$table %>%
   mutate(gene_type = case_when(logFC >= 1 & FDR <= 0.05 ~ "Up",
@@ -543,6 +544,7 @@ ggplot(data = result,
         panel.grid.minor = element_blank(),
         panel.grid.major = element_blank())
 ```
+
 According tot he Volcano Plots above, when treating the sample with only glutamine or glucose, the expression of genes of interest (genes that regulating fatty acid and cholesterol synthesis) has no significant up-regulation. Then treating the sample with both glutamine and glucose or both glucose and NH4+ would generally up-regulate the expression of the genes that regulate fatty acid and cholesterol synthesis. And it can also be seen that glutamine and glucose has relatively better effect on up-regulation of genes of interest than glucose and NH4+.
 
 ## Questions to answer for the Differential expression section
@@ -658,13 +660,13 @@ up_enrichment_results_mxgssize_3k_min_3[1:15,c("term_name", "p_value", "intersec
 
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 down_enrichment_results_mxgssize_3k_min_3[1:15,c("term_name", "p_value", "intersection_size")] %>% 
-  kable(caption="Top filtered pathways hits for upregulated genes.", 
+  kable(caption="Top filtered pathways hits for downregulated genes.", 
       row.names = FALSE, digits = 164)
 ```
       
 ```{r, error=FALSE, message=FALSE, warning=FALSE}      
 all_enrichment_results_mxgssize_3k_min_3[1:15,c("term_name", "p_value", "intersection_size")] %>% 
-  kable(caption="Top filtered pathways hits for upregulated genes.", 
+  kable(caption="Top filtered pathways hits for all genes.", 
       row.names = FALSE, digits = 164)
 ```
 
@@ -688,8 +690,12 @@ The filtered result for ORA between the down-regulated genes and all genes has h
 **Do the over-representation results support conclusions or mechanism discussed in the original paper?**
 The results I have support the conclusions from the original [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022] well. The original paper has the conclusion that "ammonia, released from glutamine, promotes lipogenesis via activation of sterol regulatory element-binding proteins (SREBPs), endoplasmic reticulum (ER)-bound transcription factors that play a central role in lipid metabolism."[@Cheng2022]. The result that I have for up-regulated genes shows that the consumption of glutamine and glucose helps activate some synthesis process (because ORA result shows that those up-regulated genes are mainly about transport (localization) and cell cycles). 
 
+Apart from that, according to the Figure.1a and Figure.2f that provided by the [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022], the result my differential expression matches perfectly with their result. We can see that the expression levels of genes of interest (genes that regulating fatty acid and cholesterol synthesis) are higher when treating with both glutamine + glucose or glucose+NH4+. 
+![Figure.1a](Fig.1.png)
+![Figure.2f](Fig.2f.png)
+
 **Can you find evidence, i.e. publications, to support some of the results that you see. How does this evidence support your results.**
-I also found a [paper](https://febs.onlinelibrary.wiley.com/doi/full/10.1111/j.1742-4658.2011.08204.x)[@] that supports the result that I see from the differential expression analysis and ORA. This paper indicates that genes related to lipid homeostasis is highly related to the amount of glutamine consumed by the cells. In my analysis, I obtained that genes that are known to be important in the process of fatty acid and cholesterol synthesis are up-regulated (higher expression) when treated by the glutamine and glucose, which matches with the point published by the [paper](https://febs.onlinelibrary.wiley.com/doi/full/10.1111/j.1742-4658.2011.08204.x)[@] I mentioned.
+I also found a [paper](https://febs.onlinelibrary.wiley.com/doi/full/10.1111/j.1742-4658.2011.08204.x)[@inoue] that supports the result that I see from the differential expression analysis and ORA. This paper indicates that genes related to lipid homeostasis is highly related to the amount of glutamine consumed by the cells. In my analysis, I obtained that genes that are known to be important in the process of fatty acid and cholesterol synthesis are up-regulated (higher expression) when treated by the glutamine and glucose, which matches with the point published by the [paper](https://febs.onlinelibrary.wiley.com/doi/full/10.1111/j.1742-4658.2011.08204.x)[@inoue] I mentioned.
 
 # References
 
