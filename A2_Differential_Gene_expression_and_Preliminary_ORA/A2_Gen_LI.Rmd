@@ -70,7 +70,7 @@ library(circlize)
 Directly load the data from my github Repository.
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 
-normalized_expression_matrix_HUGO <- readRDS(gzcon(url("")))
+normalized_expression_matrix_HUGO <- readRDS(gzcon(url("https://github.com/bcb420-2024/Gen_Li/blob/main/A2_Differential_Gene_expression_and_Preliminary_ORA/normalized_expression_matrix_HUGO.rds")))
 normalized_expression_matrix_HUGO <- cbind(normalized_expression_matrix_HUGO, symbol = rownames(normalized_expression_matrix_HUGO))
 ```
 Here we have a quick look at the normalized data:
@@ -174,7 +174,7 @@ For all the differential expression analysis happened above, I decided to use th
 ## Visualization with Heatmap
 After performing the differential gene expression analysis, visualizations of top hits genes using heatmaps and volcano plots are generated.
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
-normalized_expression_matrix_HUGO <- readRDS(gzcon(url("")))
+normalized_expression_matrix_HUGO <- readRDS(gzcon(url("https://github.com/bcb420-2024/Gen_Li/blob/main/A2_Differential_Gene_expression_and_Preliminary_ORA/normalized_expression_matrix_HUGO.rds")))
 
 heatmap_matrix <- normalized_expression_matrix_HUGO[, 1:ncol(normalized_expression_matrix_HUGO)]
 
