@@ -9,28 +9,33 @@ output:
 bibliography: A3_reference.bib
 ---
 
-
 # Introduction
-This notebook records the Non-thresholded Gene set Enrichment Analysis and visualization of the result of Gene set Enrichment Analysis of the ranked genes from Assignment 2. 
 
-In general, the original data with ID [GSE199089](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE199089)[@Cheng2022], was found in the [GEO](https://www.ncbi.nlm.nih.gov/geo/) database, published by a [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022] (please click the link to access), which performs gene expression analysis of lung cancer H1299 cells in response to the presence or absence of glutamine or glucose or NH4+. There are 15 replicates with condition Gln/-, Glu/-, Glu/Gln, Glu/NH4+, control. The data is mainly for comparing the differential expression of genes under different treatment of glutamine or glucose or NH4+. 
+This notebook records the Non-thresholded Gene set Enrichment Analysis and visualization of the result of Gene set Enrichment Analysis of the ranked genes from Assignment 2.
+
+In general, the original data with ID [GSE199089](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE199089)[@Cheng2022], was found in the [GEO](https://www.ncbi.nlm.nih.gov/geo/) database, published by a [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022] (please click the link to access), which performs gene expression analysis of lung cancer H1299 cells in response to the presence or absence of glutamine or glucose or NH4+. There are 15 replicates with condition Gln/-, Glu/-, Glu/Gln, Glu/NH4+, control. The data is mainly for comparing the differential expression of genes under different treatment of glutamine or glucose or NH4+.
 
 In the Assignment 1, the following steps were performed to process the data:
 
-- Compute quality control statistics to assess data quality
-- Map the original Gene symbols (Ensembl ID) to HUGO gene symbols and deal with abnormal situations
-- Clean the data by removing outliers or data with significant errors
-- Apply normalization on the data and generate the data frame as required
+-   Compute quality control statistics to assess data quality
+-   Map the original Gene symbols (Ensembl ID) to HUGO gene symbols and deal with abnormal situations
+-   Clean the data by removing outliers or data with significant errors
+-   Apply normalization on the data and generate the data frame as required
 
-The data has HUGO gene symbols as its row names, sample IDs/conditions as its column names, each cell of the matrix contains the normalized expression value of each gene in each sample (shown in the following Figure). 
+The normalized data has HUGO gene symbols as its row names, sample IDs/conditions as its column names, each cell of the matrix contains the normalized expression value of each gene in each sample (shown in the following Figure).
 
-![Figure.0 The format for the normalized expression data loading from assignment 2.](data_intro.png)
+
+
+![Figure.0 The format for the normalized expression data from assignment 1.](data_intro.png)
+
+<br>
 
 In Assignment 2, the differential Gene expression analysis were performed first on normalized data from Assignment 1 using edgeR package, then for genes that have significant up-regulated/down-regulated genes, the Thresholded over-representation analysis were performed by using gprofiler2 package. Generally, scoring in Assignment 2 gives me the metrics to sort the data to generate the ranked genes, which will be used in this assignment for non-thresholded gene set enrichment analysis.
 
 First, we need to install all required packages.
 
 Install all necessary packages[@BiocManager] [@knitr] [@edgeR] [@ggplot2] [@dplyr] [@ggrepel] [@gprofiler2] [@complexheatmap] [@circlize] [@RCurl]:
+
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 # Check if all required packages are installed and install them if not
 if (!require("BiocManager", quietly = TRUE))
@@ -135,18 +140,20 @@ write.table(x=data.frame(genename = result_ora$symbol,
             col.names = FALSE,quote = FALSE)
 ```
 
-
 # Non-thresholded Gene Set Enrichment Analysis
 
 Non-thresholded gene set enrichment analysis is going to be conducted using the ranked set of genes from the Assignment 2 codes above. Among many methods for the Gene Set Enrichment Analysis, I decided to use the GSEA method, which is a well-known and widely-used method[@gsea]. Generally, two files are required for the GSEA, a rank file (.rnk) and a pathway definition file (.gmt).
 
-To generate a rank file (.rnk), a score (-log10(pvalue) * sign(logFC)) was calculated from the edgeR differential expression results from Assignment 2. A gene that is significantly differentially expressed will be assigned a high score. The sign of the logFC indicates if the gene has an higher or lower expression. It is used to rank the genes from top up-regulated to top down-regulated. This is is generated from Assignment 2 and the codes can be found in the above code chunk. The data format is shown below in Figure.1.
+To generate a rank file (.rnk), a score (-log10(pvalue) \* sign(logFC)) was calculated from the edgeR differential expression results from Assignment 2. A gene that is significantly differentially expressed will be assigned a high score. The sign of the logFC indicates if the gene has an higher or lower expression. It is used to rank the genes from top up-regulated to top down-regulated. This is is generated from Assignment 2 and the codes can be found in the above code chunk. The data format is shown below in Figure.1. 
 
 ![Figure.1 The ranked gene list(.rnk) used for the GSEA, the Gene name and rank value are separeted by a tab.](ranked_gene.png)
 
-There is no need to generate a pathway definition file manually in this assignment, since the gene pathway definition file is downloaded directly from the [Dr.Bader's Lab website](http://download.baderlab.org/EM_Genesets/current_release/Human/symbol/). It contains various gene-sets obtained from MsigDB-c2, NCI, Biocarta, Netpath, HumanCyc, Reactome and the Gene Ontology (GO) databases etc., which is a well-maintained and well-established resource for the pathway data. the .gmt file downloaded is a tab delimited text file which contains one gene-set per row. For each gene-set (row), the first 2 columns contain the name and the description of the gene-set and the remaining columns contain the list of genes included in the gene-set. I am going to start with the human pathway definition with GO biological processes, but without IEA (inferred from electronic annotation). 
+<br>
+
+There is no need to generate a pathway definition file manually in this assignment, since the gene pathway definition file is downloaded directly from the [Dr.Bader's Lab website](http://download.baderlab.org/EM_Genesets/current_release/Human/symbol/). It contains various gene-sets obtained from MsigDB-c2, NCI, Biocarta, Netpath, HumanCyc, Reactome and the Gene Ontology (GO) databases etc., which is a well-maintained and well-established resource for the pathway data. the .gmt file downloaded is a tab delimited text file which contains one gene-set per row. For each gene-set (row), the first 2 columns contain the name and the description of the gene-set and the remaining columns contain the list of genes included in the gene-set. I am going to start with the human pathway definition with GO biological processes, but without IEA (inferred from electronic annotation).
 
 First, I need to download the pathway definition file:
+
 ```{r, error=FALSE, message=FALSE, warning=FALSE}
 gmt_url <- "http://download.baderlab.org/EM_Genesets/current_release/Human/symbol/"
 
@@ -164,40 +171,47 @@ dest_gmt_file <- file.path(".", gmt_file)
 download.file(paste(gmt_url, gmt_file, sep = ""), destfile = dest_gmt_file)
 ```
 
-After downloaded the pathway definition file, the GSEA is going to be performed locally on my computer, since I am using an M1 chip MacBook, and I am using the arm64 image for docker. I always get an error when running GSEA from R, which may be caused by the compatibility issue. Therefore, I decided to run it through the desktop interface since it is could be run properly. Also the app for Mac always be terminated for no reason on M1 chip macbook, so I use my intel chip computer to run it. 
+After downloaded the pathway definition file, the GSEA is going to be performed locally on my computer, since I am using an M1 chip MacBook, and I am using the arm64 image for docker. I always get an error when running GSEA from R, which may be caused by the compatibility issue. Therefore, I decided to run it through the desktop interface since it is could be run properly. Also the app for Mac always be terminated for no reason on M1 chip macbook, so I use my intel chip computer to run it.
 
 ## Data Loading
+
 Click the "Load data" button on the upper left corner of the interface to load the ranked genes (.rnk) and pathway definition file (.gmt) into the desktop application of GSEA:
 
-![Figure.2 The interface for the data loading for GSEA.](load_data.jpg)
+
+![Figure.2 The interface for the data loading for GSEA.](load_data.jpg) 
+<br>
 
 ## Parameter Adjustment
 
 Select "GseaPreRanked" button under the "Tools" menu to adjust parameters. There are a few parameters need specifying (Figure.3):
-- Gene sets database: choose to use the locally loaded .gmt file downloaded from Bader's Lab
-- Number of permutations: set its value to 2000, it is the number of times that the gene-sets will be randomized in order to create a null distribution to calculate the FDR (2000 is recommended by the tutorial provided)
-- Ranked list: select the ranked gene list loaded
-- Collapse/Remap to gene symbols: choose No_Collapse, since my ranked list of genes already has gene symbols
-- Enrichment Statistics: use the default value, which is "weighted"
-- Max size & Min size: use the default values suggested (Max 500, Min 15)
 
-![Figure.3 The parameters used for the GSEA.](Parameters.jpg)
+-   Gene sets database: choose to use the locally loaded .gmt file downloaded from Bader's Lab
+-   Number of permutations: set its value to 2000, it is the number of times that the gene-sets will be randomized in order to create a null distribution to calculate the FDR (2000 is recommended by the tutorial provided)
+-   Ranked list: select the ranked gene list loaded
+-   Collapse/Remap to gene symbols: choose No_Collapse, since my ranked list of genes already has gene symbols
+-   Enrichment Statistics: use the default value, which is "weighted"
+-   Max size & Min size: use the default values suggested (Max 500, Min 15)
 
+![Figure.3 The parameters used for the GSEA.](Parameters.jpg) 
+
+<br>
 
 After the parameter adjustment, click the `run` button at the bottom right corner of the window.
 
 It took about 10 minutes to run the analysis. Then I obtained a report (.html) file for the analysis result:
 
-![Figure.4 The index file for the analysis result of GSEA.](analysis_result.jpg)
 
+![Figure.4 The index file for the analysis result of GSEA.](analysis_result.jpg) 
+
+<br>
 
 There are two "Enrichment in Phenotype" sections. The first section shows the results for gene sets that have a positive enrichment score (gene sets that show enrichment at the top of the ranked list) and the second section shows results for gene sets that have a negative enrichment score (gene sets that show enrichment at the bottom of the ranked list) (Figure.4).
 
-It is easy to see that we have 7683 gene sets included in the analysis, 5060 of them are enriched with up-regulated genes, 2623 of them are enriched with down-regulated genes (Figure.4). 
+It is easy to see that we have 7683 gene sets included in the analysis, 5060 of them are enriched with up-regulated genes, 2623 of them are enriched with down-regulated genes (Figure.4).
 
-Among those 5060 gene sets with positive enrichment scores, 548 gene sets are significantly enriched with a false discovery rate (FDR) less than 25%, 369 gene sets have p-value less than 0.01, 849 gene sets have p-value less than 0.05 (Figure.4). 
+Among those 5060 gene sets with positive enrichment scores, 548 gene sets are significantly enriched with a false discovery rate (FDR) less than 25%, 369 gene sets have p-value less than 0.01, 849 gene sets have p-value less than 0.05 (Figure.4).
 
-And among those 2623 gene sets, 1107 gene sets are significantly enriched with a false discovery rate (FDR) less than 25% as well, 596 gene sets have p-value less than 0.01, 931 gene sets have p-value less than 0.05 (Figure.4).  
+And among those 2623 gene sets, 1107 gene sets are significantly enriched with a false discovery rate (FDR) less than 25% as well, 596 gene sets have p-value less than 0.01, 931 gene sets have p-value less than 0.05 (Figure.4).
 
 The value for gene sets with FDR less than 25% could be used to determine what thresholds to start with when creating the enrichment map later.
 
@@ -207,30 +221,31 @@ Additionally, the enrichment results snapshot displays the top 20 enrichment plo
 
 ![Figure.5 The top 9 enrichment plots with the highest absolute normalized enrichment scores for Up-regulated genes.](pos_snapshot.jpg) 
 
-
+<br>
 
 **Enrichment Plots for Down-regulated genes:**
 
 ![Figure.6 The top 9 enrichment plots with the highest absolute normalized enrichment scores for Down-regulated genes.](neg_snapshot.jpg)
 
+<br>
 
 ## Questions
 
 **What method did you use? What genesets did you use? Make sure to specify versions and cite your methods.**
 
-I decided to use the GSEA [@gsea] to perform the Gene Set Enrichment Analysis, since it is the most widely-used method for Gene Set Enrichment Analysis, and I used to have experience in using it. Also it provides a desktop user-friendly application, which is straightforward and easy to use. 
+I decided to use the GSEA [@gsea] to perform the Gene Set Enrichment Analysis, since it is the most widely-used method for Gene Set Enrichment Analysis, and I used to have experience in using it. Also it provides a desktop user-friendly application, which is straightforward and easy to use.
 
-The gene sets that I use is the human pathway definition with GO biological processes, but without IEA (inferred from electronic annotation), which is downloaded directly from the Dr.Bader's Lab website. The version for the gene sets file is the latest version, which is April_01_2024 when I finish this assignment 3. 
+The gene sets that I use is the human pathway definition with GO biological processes, but without IEA (inferred from electronic annotation), which is downloaded directly from the [Dr.Bader's Lab website](http://download.baderlab.org/EM_Genesets/current_release/Human/symbol/). The version for the gene sets file is the latest version, which is April_01_2024 when I finish this assignment 3.
 
 **Summarize your enrichment results.** (This part is just a copy paste from the above summary of the enrichment results, please refer the scrrenshots above)
 
 There are two "Enrichment in Phenotype" sections. The first section shows the results for gene sets that have a positive enrichment score (gene sets that show enrichment at the top of the ranked list) and the second section shows results for gene sets that have a negative enrichment score (gene sets that show enrichment at the bottom of the ranked list).
 
-It is easy to see that we have 7683 gene sets included in the analysis, 5060 of them are enriched with up-regulated genes, 2623 of them are enriched with down-regulated genes. 
+It is easy to see that we have 7683 gene sets included in the analysis, 5060 of them are enriched with up-regulated genes, 2623 of them are enriched with down-regulated genes.
 
-Among those 5060 gene sets with positive enrichment scores, 548 gene sets are significantly enriched with a false discovery rate (FDR) less than 25%, 369 gene sets have p-value less than 0.01, 849 gene sets have p-value less than 0.05. 
+Among those 5060 gene sets with positive enrichment scores, 548 gene sets are significantly enriched with a false discovery rate (FDR) less than 25%, 369 gene sets have p-value less than 0.01, 849 gene sets have p-value less than 0.05.
 
-And among those 2623 gene sets, 1107 gene sets are significantly enriched with a false discovery rate (FDR) less than 25% as well, 596 gene sets have p-value less than 0.01, 931 gene sets have p-value less than 0.05.  
+And among those 2623 gene sets, 1107 gene sets are significantly enriched with a false discovery rate (FDR) less than 25% as well, 596 gene sets have p-value less than 0.01, 931 gene sets have p-value less than 0.05.
 
 The value for gene sets with FDR less than 25% could be used to determine what thresholds to start with when creating the enrichment map later.
 
@@ -246,46 +261,52 @@ I am going to use the desktop App of EnrichmentMap to create an enrichment map f
 
 There are a few parameters to set:
 
-- Analysis Type: set as `GSEA`, since the gene set enrichment analysis is performed by GSEA
+-   Analysis Type: set as `GSEA`, since the gene set enrichment analysis is performed by GSEA
 
-- Enrichments Pos & Enrichments Neg: two required files mentioned above
+-   Enrichments Pos & Enrichments Neg: two required files mentioned above
 
-- GMT: the pathway definition file used by GSEA
+-   GMT: the pathway definition file used by GSEA
 
-- Ranks: ranked gene list (.rnk) used by GSEA
+-   Ranks: ranked gene list (.rnk) used by GSEA
 
-- Expressions: I use the normalized expression matrix data generated from Assignment 1
+-   Expressions: I use the normalized expression matrix data generated from Assignment 1
 
-- FDR q-value cutoff: set the cutoff to 0.0001 as recommended by the tutorial
+-   FDR q-value cutoff: set the cutoff to 0.0001 as recommended by the tutorial
 
 All other parameters are either not required or keeping as default values (as shown below).
 
 
-![Figure.7 Files and parameters used for creating the Enrichment Map in Cytoscape with App EnrichmentMap.](EM_parameters.png)
+![Figure.7 Files and parameters used for creating the Enrichment Map in Cytoscape with App EnrichmentMap.](EM_parameters.png) 
 
+<br>
 
 This is the Enrichment Map generated without manual layout:
 
-
 ![Figure.8 The raw output of the Enrichment Map (before manual layout).](EM_before_manual_layout.png)
 
+<br>
 
 After this, I manually arrange the nodes and annotate the Enrichment map. To annotate it, I use mainly use WordCloud, ClusterMaker and Autoannotate Apps in Cytoscape. The parameters for creating an annotated enrichment map are kept as default as shown below:
 
 
-![Figure.9 Parameters used for the annotation of the Enrichment Map.](Annotate_parameters.png)
+![Figure.9 Parameters used for the annotation of the Enrichment Map.](Annotate_parameters.png) 
 
+<br>
 
 Below is the initial result of annotation of the enrichment map:
 
 
-![Figure.10 The result for the Enrichment Map annotaion without adjusting.](EM_with_annotation.png)
+![Figure.10 The result for the Enrichment Map annotaion without adjusting.](EM_with_annotation.png) 
+
+<br>
 
 After optimizing and adding legend, this is the current ready to publish version of the enrichment map:
+![Figure.11 The ready-for-publication ENrichment Map with legends.](Ready_publish_EM.png) Figure.11 The ready-for-publication ENrichment Map with legends.
+<br>
 
-![Figure.11 The ready-for-publication ENrichment Map with legends.](Ready_publish_EM.png)
 
 ## Questions
+
 **Create an enrichment map - how many nodes and how many edges in the resulting map? What thresholds were used to create this map? Make sure to record all thresholds. Include a screenshot of your network prior to manual layout.**
 
 There are 196 nodes and 3246 edges in the resulting map. I set the FDR q-value as 0.0001 to create this map, and the threshold for edge similarity is 0.375. The screenshot of your network prior to manual layout can be found above in Figure.8.
@@ -302,14 +323,17 @@ The publication ready figure can be found at Figure.11.
 
 The network is collapsed to a theme network, where each cluster are collapsed into a single node (Figure.12). The major theme present in this analysis is the metabolism (synthesis and degradation) and process related to cholesterol metabolism in hepatocytes (Figure.11 and Figure.12). These themes fit well with the model, since the model described in the original [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022] shows the relationship between the experiment conditions with the synthesis of fatty acid and cholesterol. No novel pathways or themes are found.
 
-![Figure.12 The collapsed Enrichment Map, which can be found that pathways that are up-regulated are highly-related to process related to cholesterol.](collapsed_EM.png)
+![Figure.12 The collapsed Enrichment Map, which can be found that pathways that are up-regulated are highly-related to process related to cholesterol.](collapsed_EM.png) 
+
+<br>
+
 # Interpretation and detailed view of results
 
 **Do the enrichment results support conclusions or mechanism discussed in the original paper? How do these results differ from the results you got from Assignment #2 thresholded methods**
 
-Yes, the enrichment result here support the mechanism discussed in the original [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022]. The result shown in the original [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022] shows that with the consumption of Glucose and Glutamine, genes that are related to the synthesis of fatty acid and cholesterol are up-regulated. The result of the enrichment analysis shows that up-regulated genes are enriched in some pathways that are related to metabolism and process related to cholesterol. 
+Yes, the enrichment result here support the mechanism discussed in the original [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022]. The result shown in the original [paper](https://pubmed.ncbi.nlm.nih.gov/35534729/)[@Cheng2022] shows that with the consumption of Glucose and Glutamine, genes that are related to the synthesis of fatty acid and cholesterol are up-regulated. The result of the enrichment analysis shows that up-regulated genes are enriched in some pathways that are related to metabolism and process related to cholesterol.
 
-This result is a bit different from the result I got from Assignment 2. In assignment 2, the result for thresholded over-representation analysis (ORA) for the pathways for up-regulated/down-regulated genes are mainly related to the cell cycle, components transport (localization), biosynthesis, metabolism and RNA processing, which may indicate that those genes may be highly related to some synthesis or secretion process, which is not as accurate as the result for GSEA (indicating the pathways are related to cholesterol). In conclusion, the result of GSEA returns a more specific and more accurate pathway information related to the genes of interest, but result of ORA returns a more general(not so specific, less informative) pathways. 
+This result is a bit different from the result I got from Assignment 2. In assignment 2, the result for thresholded over-representation analysis (ORA) for the pathways for up-regulated/down-regulated genes are mainly related to the cell cycle, components transport (localization), biosynthesis, metabolism and RNA processing, which may indicate that those genes may be highly related to some synthesis or secretion process, which is not as accurate as the result for GSEA (indicating the pathways are related to cholesterol). In conclusion, the result of GSEA returns a more specific and more accurate pathway information related to the genes of interest, but result of ORA returns a more general(not so specific, less informative) pathways.
 
 **Can you find evidence, i.e. publications, to support some of the results that you see. How does this evidence support your result?**
 
@@ -319,7 +343,9 @@ I have also come across a [paper](https://pubmed.ncbi.nlm.nih.gov/21696544/)[@in
 
 Since the model we have is studying the relationship between the expression level of genes for fatty acid and cholesterol synthesis and the consumption of glucose and glutamine. I learned from the [paper](https://www.jci.org/articles/view/15593)[@post] that under the physiological conditions, lipid levels are mainly regulated by sterol regulatory element-binding proteins (SREBPs). Therefore, I decided to add drugs that regard SREBPs as targets into the post analysis. According to the data from DrugBank[@drugbank], I am going to add Doconexent, Fish Oil and Omega-3 fatty acids to the enrichment map. The result is shown below:
 
-![Figure.13 The result for the post-analysis, with signature gene sets of Doconexent, Fish Oil and Omega-3 fatty acids.](post_analysis.png)
+![Figure.13 The result for the post-analysis, with signature gene sets of Doconexent, Fish Oil and Omega-3 fatty acids.](post_analysis.png) 
+
+<br>
 
 It is easy to see that the signature gene sets for Doconexent, Fish Oil and Omega-3 fatty acids all share genes with the pathway-"Metabolism of steroids". This makes sense cause cholesterol is the sole precursor of steroids [@steroid], which may indicate that those drugs have effect on some genes that really participate in the reasonable biological processes.
 
